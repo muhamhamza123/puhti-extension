@@ -6,7 +6,7 @@ import { ICommandPalette } from '@jupyterlab/apputils';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { Widget } from '@lumino/widgets';
 
-const API = 'http://hbv.we3data.com:8002';
+const API = 'https://hbv.we3data.com/puhti';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
