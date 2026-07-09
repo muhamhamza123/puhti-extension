@@ -2,6 +2,10 @@ from jupyter_server.base.handlers import APIHandler
 from jupyter_server.utils import url_path_join
 import json
 import re
+import io
+import os
+import zipfile
+import urllib.request
 
 # ── Dummy responses keyed by keyword ─────────────────────────────────────────
 DUMMY_RESPONSES = {
@@ -152,9 +156,63 @@ class LLMAskHandler(APIHandler):
         }))
 
 
+PUHTI_API = os.environ.get("PUHTI_API_URL", "https://hbv.we3data.com/puhti")
+
+
+class AuthTokenHandler(APIHandler):
+    """
+    GET /puhti-runner/auth-token
+    Returns the JupyterHub API token from the server environment.
+    The frontend uses this to authenticate with the Puhti API.
+    """
+    def get(self):
+        token = os.environ.get("JUPYTERHUB_API_TOKEN", "")
+        hub_url = os.environ.get("JUPYTERHUB_API_URL", "")
+        self.finish(json.dumps({"token": token, "hub_url": hub_url}))
+
+
+class SaveResultsHandler(APIHandler):
+    """
+    POST /puhti-runner/save-results
+    Body: { "job_id": "...", "slurm_id": "..." }
+    Fetches the results zip from the Puhti API and extracts it to
+    ~/puhti-results/{slurm_id}/ on the user's PVC.
+    """
+
+    def post(self):
+        data = json.loads(self.request.body)
+        job_id = data.get("job_id", "")
+        slurm_id = data.get("slurm_id", job_id)
+
+        if not job_id:
+            self.set_status(400)
+            self.finish(json.dumps({"error": "job_id required"}))
+            return
+
+        url = f"{PUHTI_API}/run-results/{job_id}"
+        try:
+            with urllib.request.urlopen(url, timeout=120) as resp:
+                zip_bytes = resp.read()
+        except Exception as e:
+            self.set_status(502)
+            self.finish(json.dumps({"error": f"Could not fetch results: {e}"}))
+            return
+
+        dest = os.path.join(os.path.expanduser("~"), "puhti-results", str(slurm_id))
+        os.makedirs(dest, exist_ok=True)
+
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.extractall(dest)
+
+        self.finish(json.dumps({"saved_to": dest, "files": os.listdir(dest)}))
+
+
 def setup_handlers(web_app):
     host_pattern = ".*$"
     base_url = web_app.settings["base_url"]
-    route_pattern = url_path_join(base_url, "llm-assistant", "llm/ask")
-    handlers = [(route_pattern, LLMAskHandler)]
+    handlers = [
+        (url_path_join(base_url, "llm-assistant", "llm/ask"), LLMAskHandler),
+        (url_path_join(base_url, "puhti-runner", "save-results"), SaveResultsHandler),
+        (url_path_join(base_url, "puhti-runner", "auth-token"), AuthTokenHandler),
+    ]
     web_app.add_handlers(host_pattern, handlers)

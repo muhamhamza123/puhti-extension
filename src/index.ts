@@ -56,6 +56,10 @@ class PuhtiWidget extends Widget {
   // jobs tab refs
   private _jobsList!: HTMLDivElement;
   private _logPanel!: HTMLDivElement;
+  private _pageLabel!: HTMLSpanElement;
+  private _allJobs: any[] = [];
+  private _jobPage = 0;
+  private readonly _PAGE_SIZE = 10;
 
   // containers tab refs
   private _containersList!: HTMLDivElement;
@@ -337,19 +341,32 @@ class PuhtiWidget extends Widget {
   // ── Jobs tab ────────────────────────────────────────────────────────────────
 
   private _buildJobs(p: HTMLDivElement): void {
-    const row = el('div', 'display:flex;gap:8px;flex-shrink:0;');
-    row.appendChild(btn('↻ Refresh', '#3b82f6', () => this._loadHistory()));
-    p.appendChild(row);
+    const topRow = el('div', 'display:flex;gap:8px;flex-shrink:0;align-items:center;');
+    topRow.appendChild(btn('↻ Refresh', '#3b82f6', () => this._loadHistory()));
+    p.appendChild(topRow);
 
-    this._jobsList = el('div', 'display:flex;flex-direction:column;gap:8px;') as HTMLDivElement;
-    p.appendChild(this._jobsList);
-
+    // log panel at top so it's always visible
     this._logPanel = el(
       'div',
       'display:none;background:var(--jp-layout-color0);border:1px solid var(--jp-border-color2);' +
-      'border-radius:6px;padding:8px;font-size:11px;font-family:monospace;overflow-x:auto;'
+      'border-radius:6px;padding:8px;font-size:11px;font-family:monospace;overflow-x:auto;max-height:200px;overflow-y:auto;flex-shrink:0;'
     ) as HTMLDivElement;
     p.appendChild(this._logPanel);
+
+    // pagination controls
+    const pageRow = el('div', 'display:flex;gap:6px;align-items:center;flex-shrink:0;');
+    const prevBtn = btn('◀', '#64748b', () => { if (this._jobPage > 0) { this._jobPage--; this._renderPage(); } });
+    const nextBtn = btn('▶', '#64748b', () => {
+      if ((this._jobPage + 1) * this._PAGE_SIZE < this._allJobs.length) { this._jobPage++; this._renderPage(); }
+    });
+    this._pageLabel = el('span', 'font-size:11px;color:var(--jp-ui-font-color2);flex:1;text-align:center;') as HTMLSpanElement;
+    pageRow.appendChild(prevBtn);
+    pageRow.appendChild(this._pageLabel);
+    pageRow.appendChild(nextBtn);
+    p.appendChild(pageRow);
+
+    this._jobsList = el('div', 'display:flex;flex-direction:column;gap:8px;') as HTMLDivElement;
+    p.appendChild(this._jobsList);
   }
 
   private async _loadHistory(): Promise<void> {
@@ -359,16 +376,26 @@ class PuhtiWidget extends Widget {
     }
     try {
       const data = await this._api('GET', `/my-jobs-status/${this._username}`);
-      const jobs = data.jobs as any[];
-      this._jobsList.innerHTML = '';
-      if (!jobs.length) {
-        this._jobsList.innerHTML = '<div style="font-size:12px;color:var(--jp-ui-font-color2);">No jobs yet.</div>';
-        return;
-      }
-      jobs.forEach(job => this._jobsList.appendChild(this._makeJobRow(job)));
+      this._allJobs = data.jobs as any[];
+      this._jobPage = 0;
+      this._renderPage();
     } catch (e) {
       this._jobsList.innerHTML = `<div style="color:red;font-size:12px;">Error: ${e}</div>`;
     }
+  }
+
+  private _renderPage(): void {
+    this._jobsList.innerHTML = '';
+    if (!this._allJobs.length) {
+      this._jobsList.innerHTML = '<div style="font-size:12px;color:var(--jp-ui-font-color2);">No jobs yet.</div>';
+      this._pageLabel.textContent = '';
+      return;
+    }
+    const total = this._allJobs.length;
+    const start = this._jobPage * this._PAGE_SIZE;
+    const end = Math.min(start + this._PAGE_SIZE, total);
+    this._pageLabel.textContent = `${start + 1}–${end} of ${total}`;
+    this._allJobs.slice(start, end).forEach(job => this._jobsList.appendChild(this._makeJobRow(job)));
   }
 
   private _makeJobRow(job: any): HTMLDivElement {

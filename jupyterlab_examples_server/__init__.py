@@ -6,6 +6,5 @@ def _jupyter_server_extension_points():
         "module": "jupyterlab_examples_server"
     }]
 
-def _jupyter_server_extension(server_app):
-    """Called when the server extension is loaded"""
+def _load_jupyter_server_extension(server_app):
     setup_handlers(server_app.web_app)
