@@ -2,7 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -29,4 +29,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/muhamhamza123/puhti-extension:${{ github.ref_name }}
+            ghcr.io/muhamhamza123/puhti-extension:latest
+            ghcr.io/muhamhamza123/puhti-extension:${{ github.sha }}
