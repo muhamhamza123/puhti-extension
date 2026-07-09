@@ -50,6 +50,7 @@ class PuhtiWidget extends Widget {
   private _memRange!: HTMLInputElement;
   private _memLabel!: HTMLSpanElement;
   private _reqText!: HTMLTextAreaElement;
+  private _emailInput!: HTMLInputElement;
   private _submitStatus!: HTMLDivElement;
 
   // jobs tab refs
@@ -225,6 +226,12 @@ class PuhtiWidget extends Widget {
     this._reqText.placeholder = 'numpy\npandas\n...';
     p.appendChild(this._reqText);
 
+    p.appendChild(this._label('Notification email (optional)'));
+    this._emailInput = el('input', this._inputCss()) as HTMLInputElement;
+    this._emailInput.type = 'email';
+    this._emailInput.placeholder = 'you@example.com — notified when job finishes';
+    p.appendChild(this._emailInput);
+
     this._submitStatus = el('div', 'font-size:12px;min-height:18px;') as HTMLDivElement;
     p.appendChild(btn('▶  Run on Puhti', '#10b981', () => this._submit()));
     p.appendChild(this._submitStatus);
@@ -300,6 +307,8 @@ class PuhtiWidget extends Widget {
     fd.append('memory_gb', this._memRange.value);
     fd.append('container', this._containerSelect.value);
     fd.append('username', this._username);
+    const emailVal = this._emailInput.value.trim();
+    if (emailVal) { fd.append('email', emailVal); }
     const reqs = this._reqText.value.trim();
     if (reqs) {
       fd.append('requirements', new Blob([reqs], { type: 'text/plain' }), 'requirements.txt');
