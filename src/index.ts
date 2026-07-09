@@ -74,7 +74,6 @@ class PuhtiWidget extends Widget {
   private _simpleDescInput!: HTMLInputElement;
   private _simpleStatus!: HTMLDivElement;
   private _myRequestsList!: HTMLDivElement;
-  private _billingInfo!: HTMLDivElement;
 
   constructor(tracker: INotebookTracker) {
     super();
@@ -251,27 +250,11 @@ class PuhtiWidget extends Widget {
         submitBtn.style.opacity = '1';
       });
     });
-    this._billingInfo = el('div', 'font-size:11px;color:var(--jp-ui-font-color2);margin-bottom:4px;') as HTMLDivElement;
-    p.appendChild(this._billingInfo);
     p.appendChild(submitBtn);
     p.appendChild(this._submitStatus);
 
     this._refreshNotebooks();
     this._loadContainers();
-    this._loadBilling();
-  }
-
-  private async _loadBilling(): Promise<void> {
-    try {
-      const data = await this._api('GET', '/billing');
-      if (data.remaining !== null && data.remaining !== undefined) {
-        const color = data.remaining < 500 ? '#f59e0b' : 'var(--jp-ui-font-color2)';
-        this._billingInfo.style.color = color;
-        this._billingInfo.textContent = `Project BUs remaining: ${Number(data.remaining).toLocaleString()}`;
-      }
-    } catch {
-      // silently ignore — billing is informational only
-    }
   }
 
   private async _refreshNotebooks(): Promise<void> {
