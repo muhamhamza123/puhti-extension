@@ -386,7 +386,7 @@ class PuhtiWidget extends Widget {
 
     const top = el('div', 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;');
     top.appendChild(el('span', `color:${STATUS_COLOR[job.status] || '#64748b'};font-size:14px;`, '●'));
-    const created = job.created ? new Date(job.created + 'Z').toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const created = job.created ? new Date(job.created.replace(' ', 'T') + 'Z').toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
     top.appendChild(el(
       'span',
       'flex:1;font-size:11px;color:var(--jp-ui-font-color1);',
