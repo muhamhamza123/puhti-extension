@@ -367,16 +367,8 @@ class PuhtiWidget extends Widget {
       return;
     }
     try {
-      const data = await this._api('GET', `/my-jobs/${this._username}`);
+      const data = await this._api('GET', `/my-jobs-status/${this._username}`);
       const jobs = data.jobs as any[];
-      // poll Slurm for any still-active jobs to get up-to-date status
-      const active = jobs.filter(j => j.status === 'queued' || j.status === 'running');
-      await Promise.all(active.map(async j => {
-        try {
-          const s = await this._api('GET', `/run-status/${j.job_id}`);
-          j.status = s.status;
-        } catch { /* keep DB status on error */ }
-      }));
       this._jobsList.innerHTML = '';
       if (!jobs.length) {
         this._jobsList.innerHTML = '<div style="font-size:12px;color:var(--jp-ui-font-color2);">No jobs yet.</div>';
