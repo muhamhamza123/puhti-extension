@@ -1,4 +1,3 @@
-jupyterlab_examples_server/labextension
 node_modules
 .yarn
 venv
