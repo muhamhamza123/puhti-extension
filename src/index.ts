@@ -299,8 +299,11 @@ class PuhtiWidget extends Widget {
   }
 
   private async _submit(): Promise<void> {
+    if (this._submitting) { return; }
+    this._submitting = true;
     const path = this._nbSelect.value;
     if (!path || path.startsWith('(')) {
+      this._submitting = false;
       this._setStatus(this._submitStatus, 'No notebook selected', 'red');
       return;
     }
@@ -312,6 +315,7 @@ class PuhtiWidget extends Widget {
       if (!widget) { throw new Error('Notebook not found — is it open?'); }
       nbContent = JSON.stringify(widget.context.model.toJSON());
     } catch (e) {
+      this._submitting = false;
       this._setStatus(this._submitStatus, `Could not read notebook: ${e}`, 'red');
       return;
     }
@@ -334,6 +338,8 @@ class PuhtiWidget extends Widget {
       this._setStatus(this._submitStatus, `Submitted — Slurm ${job.slurm_id} — check Jobs tab`, '#3b82f6');
     } catch (e) {
       this._setStatus(this._submitStatus, `Submit failed: ${e}`, 'red');
+    } finally {
+      this._submitting = false;
     }
   }
 
