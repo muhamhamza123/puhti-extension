@@ -74,6 +74,7 @@ class PuhtiWidget extends Widget {
   private _simpleDescInput!: HTMLInputElement;
   private _simpleStatus!: HTMLDivElement;
   private _myRequestsList!: HTMLDivElement;
+  private _billingInfo!: HTMLDivElement;
 
   constructor(tracker: INotebookTracker) {
     super();
@@ -250,11 +251,27 @@ class PuhtiWidget extends Widget {
         submitBtn.style.opacity = '1';
       });
     });
+    this._billingInfo = el('div', 'font-size:11px;color:var(--jp-ui-font-color2);margin-bottom:4px;') as HTMLDivElement;
+    p.appendChild(this._billingInfo);
     p.appendChild(submitBtn);
     p.appendChild(this._submitStatus);
 
     this._refreshNotebooks();
     this._loadContainers();
+    this._loadBilling();
+  }
+
+  private async _loadBilling(): Promise<void> {
+    try {
+      const data = await this._api('GET', '/billing');
+      if (data.remaining !== null && data.remaining !== undefined) {
+        const color = data.remaining < 500 ? '#f59e0b' : 'var(--jp-ui-font-color2)';
+        this._billingInfo.style.color = color;
+        this._billingInfo.textContent = `Project BUs remaining: ${Number(data.remaining).toLocaleString()}`;
+      }
+    } catch {
+      // silently ignore — billing is informational only
+    }
   }
 
   private async _refreshNotebooks(): Promise<void> {
@@ -603,6 +620,8 @@ class PuhtiWidget extends Widget {
     fd.append('packages', packages);
     fd.append('description', this._simpleDescInput.value.trim());
     fd.append('username', this._username);
+    const emailVal = this._emailInput?.value?.trim();
+    if (emailVal) { fd.append('email', emailVal); }
     try {
       const result = await this._api('POST', '/request-container-simple', fd);
       this._setStatus(this._simpleStatus, `PR opened: ${result.pr_url}`, '#10b981');
@@ -622,6 +641,8 @@ class PuhtiWidget extends Widget {
     fd.append('def_file', new Blob([this._defBytes], { type: 'text/plain' }), this._defFname);
     fd.append('description', this._defDesc.value.trim());
     fd.append('username', this._username);
+    const emailVal2 = this._emailInput?.value?.trim();
+    if (emailVal2) { fd.append('email', emailVal2); }
     try {
       const result = await this._api('POST', '/request-container', fd);
       this._setStatus(this._requestStatus, `PR opened: ${result.pr_url}`, '#10b981');
@@ -641,7 +662,7 @@ class PuhtiWidget extends Widget {
         this._myRequestsList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">No requests yet.</div>';
         return;
       }
-      const STATUS_COLOR: Record<string, string> = { pending: '#f59e0b', merged: '#10b981', closed: '#ef4444' };
+      const STATUS_COLOR: Record<string, string> = { pending: '#f59e0b', merged: '#3b82f6', building: '#3b82f6', ready: '#10b981', closed: '#ef4444' };
       reqs.forEach(r => {
         const row = el('div', 'font-size:11px;padding:4px 8px;background:var(--jp-layout-color2);border-radius:4px;display:flex;gap:6px;align-items:center;');
         row.appendChild(el('span', `color:${STATUS_COLOR[r.status] || '#64748b'};`, '●'));
