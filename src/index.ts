@@ -40,7 +40,6 @@ class PuhtiWidget extends Widget {
   private _tracker: INotebookTracker;
   private _username: string;
   private _jhToken: string = '';
-  private _submitting = false;
 
   // submit tab refs
   private _nbSelect!: HTMLSelectElement;
@@ -234,20 +233,18 @@ class PuhtiWidget extends Widget {
     p.appendChild(this._emailInput);
 
     this._submitStatus = el('div', 'font-size:12px;min-height:18px;') as HTMLDivElement;
-    const submitBtn = btn('▶  Run on Puhti', '#10b981', async () => {
-      if (this._submitting) { return; }
-      this._submitting = true;
+    const submitBtn = btn('▶  Run on Puhti', '#10b981', () => {
+      if (submitBtn.dataset.busy === '1') { return; }
+      submitBtn.dataset.busy = '1';
       submitBtn.disabled = true;
       submitBtn.textContent = 'Submitting…';
       submitBtn.style.opacity = '0.6';
-      try {
-        await this._submit();
-      } finally {
-        this._submitting = false;
+      this._submit().finally(() => {
+        delete submitBtn.dataset.busy;
         submitBtn.disabled = false;
         submitBtn.textContent = '▶  Run on Puhti';
         submitBtn.style.opacity = '1';
-      }
+      });
     });
     p.appendChild(submitBtn);
     p.appendChild(this._submitStatus);
