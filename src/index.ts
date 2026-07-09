@@ -40,6 +40,7 @@ class PuhtiWidget extends Widget {
   private _tracker: INotebookTracker;
   private _username: string;
   private _jhToken: string = '';
+  private _submitting = false;
 
   // submit tab refs
   private _nbSelect!: HTMLSelectElement;
@@ -234,11 +235,19 @@ class PuhtiWidget extends Widget {
 
     this._submitStatus = el('div', 'font-size:12px;min-height:18px;') as HTMLDivElement;
     const submitBtn = btn('▶  Run on Puhti', '#10b981', async () => {
+      if (this._submitting) { return; }
+      this._submitting = true;
       submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting…';
       submitBtn.style.opacity = '0.6';
-      await this._submit();
-      submitBtn.disabled = false;
-      submitBtn.style.opacity = '1';
+      try {
+        await this._submit();
+      } finally {
+        this._submitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = '▶  Run on Puhti';
+        submitBtn.style.opacity = '1';
+      }
     });
     p.appendChild(submitBtn);
     p.appendChild(this._submitStatus);
@@ -394,12 +403,17 @@ class PuhtiWidget extends Widget {
     ));
 
     if (job.status === 'done') {
-      const getBtn = btn('↓ Get', '#10b981', async () => {
+      const getBtn = btn('↓ Get', '#10b981', () => {
+        if (getBtn.disabled) { return; }
         getBtn.disabled = true;
-        getBtn.textContent = '…';
-        await this._fetchResultsFor(job.job_id, job.slurm_id, row);
-        getBtn.disabled = false;
-        getBtn.textContent = '↓ Get';
+        getBtn.textContent = 'Saving…';
+        getBtn.style.opacity = '0.6';
+        setTimeout(async () => {
+          await this._fetchResultsFor(job.job_id, job.slurm_id, row);
+          getBtn.disabled = false;
+          getBtn.textContent = '↓ Get';
+          getBtn.style.opacity = '1';
+        }, 0);
       });
       top.appendChild(getBtn);
     }
