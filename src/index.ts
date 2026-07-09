@@ -167,8 +167,8 @@ class PuhtiWidget extends Widget {
 
     // auto-refresh every 10s
     setInterval(() => {
-      const jobsVisible = panels[1].style.display !== 'none';
-      if (jobsVisible) { this._loadHistory(); }
+      if (panels[1].style.display !== 'none') { this._loadHistory(); }
+      if (panels[2].style.display !== 'none') { this._loadContainerRequests(); }
     }, 10000);
   }
 
@@ -233,7 +233,14 @@ class PuhtiWidget extends Widget {
     p.appendChild(this._emailInput);
 
     this._submitStatus = el('div', 'font-size:12px;min-height:18px;') as HTMLDivElement;
-    p.appendChild(btn('▶  Run on Puhti', '#10b981', () => this._submit()));
+    const submitBtn = btn('▶  Run on Puhti', '#10b981', async () => {
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.6';
+      await this._submit();
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+    });
+    p.appendChild(submitBtn);
     p.appendChild(this._submitStatus);
 
     this._refreshNotebooks();
@@ -379,14 +386,22 @@ class PuhtiWidget extends Widget {
 
     const top = el('div', 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;');
     top.appendChild(el('span', `color:${STATUS_COLOR[job.status] || '#64748b'};font-size:14px;`, '●'));
+    const created = job.created ? new Date(job.created + 'Z').toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
     top.appendChild(el(
       'span',
       'flex:1;font-size:11px;color:var(--jp-ui-font-color1);',
-      `${job.job_id.slice(0, 8)} · Slurm ${job.slurm_id} · ${job.status} · ${job.partition}`
+      `${job.job_id.slice(0, 8)} · Slurm ${job.slurm_id} · ${job.status} · ${job.partition}${created ? ' · ' + created : ''}`
     ));
 
     if (job.status === 'done') {
-      top.appendChild(btn('↓ Get', '#10b981', () => this._fetchResultsFor(job.job_id, job.slurm_id, row)));
+      const getBtn = btn('↓ Get', '#10b981', async () => {
+        getBtn.disabled = true;
+        getBtn.textContent = '…';
+        await this._fetchResultsFor(job.job_id, job.slurm_id, row);
+        getBtn.disabled = false;
+        getBtn.textContent = '↓ Get';
+      });
+      top.appendChild(getBtn);
     }
     top.appendChild(btn('📋 Log', '#64748b', () => this._showLogFor(job.job_id)));
     if (job.status === 'failed' || job.status === 'cancelled') {
@@ -450,6 +465,7 @@ class PuhtiWidget extends Widget {
   }
 
   private async _cancelJob(jobId: string, row: HTMLDivElement): Promise<void> {
+    if (!confirm('Cancel this job? This cannot be undone.')) { return; }
     try {
       await this._api('POST', `/cancel-job/${jobId}`);
       setTimeout(() => this._loadHistory(), 500);
