@@ -49,9 +49,17 @@ class PuhtiWidget extends Widget {
   private _cpuLabel!: HTMLSpanElement;
   private _memRange!: HTMLInputElement;
   private _memLabel!: HTMLSpanElement;
+  private _timeRange!: HTMLInputElement;
+  private _timeLabel!: HTMLSpanElement;
   private _reqText!: HTMLTextAreaElement;
   private _emailInput!: HTMLInputElement;
   private _submitStatus!: HTMLDivElement;
+
+  // data tab refs
+  private _dataFileInput!: HTMLInputElement;
+  private _dataFileLabel!: HTMLSpanElement;
+  private _dataUploadStatus!: HTMLDivElement;
+  private _dataFileList!: HTMLDivElement;
 
   // jobs tab refs
   private _jobsList!: HTMLDivElement;
@@ -132,13 +140,13 @@ class PuhtiWidget extends Widget {
       'div',
       'display:flex;border-bottom:1px solid var(--jp-border-color2);flex-shrink:0;'
     );
-    const tabs = ['Submit', 'Jobs', 'Containers'];
+    const tabs = ['Submit', 'Jobs', 'Containers', 'Data'];
     const panels: HTMLDivElement[] = [];
 
     tabs.forEach((name, i) => {
       const t = el(
         'button',
-        'flex:1;padding:8px 4px;border:none;background:none;cursor:pointer;font-size:12px;' +
+        'flex:1;padding:8px 2px;border:none;background:none;cursor:pointer;font-size:11px;' +
           'font-family:inherit;border-bottom:2px solid transparent;color:var(--jp-ui-font-color2);',
         name
       );
@@ -157,6 +165,7 @@ class PuhtiWidget extends Widget {
         if (i === 0) { this._refreshNotebooks(); }
         if (i === 1) { this._loadHistory(); }
         if (i === 2) { this._refreshContainers(); this._loadContainerRequests(); }
+        if (i === 3) { this._loadDataFiles(); }
       };
       tabBar.appendChild(t);
       this.node.appendChild(p);
@@ -166,6 +175,7 @@ class PuhtiWidget extends Widget {
     this._buildSubmit(panels[0]);
     this._buildJobs(panels[1]);
     this._buildContainers(panels[2]);
+    this._buildData(panels[3]);
 
     (tabBar.children[0] as HTMLElement).click();
 
@@ -221,6 +231,17 @@ class PuhtiWidget extends Widget {
     memRow.appendChild(this._memRange);
     memRow.appendChild(this._memLabel);
     p.appendChild(memRow);
+
+    const timeRow = el('div', 'display:flex;align-items:center;gap:8px;');
+    p.appendChild(this._label('Time limit (hours)'));
+    this._timeRange = el('input', 'flex:1;') as HTMLInputElement;
+    this._timeRange.type = 'range';
+    this._timeRange.min = '1'; this._timeRange.max = '72'; this._timeRange.value = '2';
+    this._timeLabel = el('span', 'font-size:12px;width:36px;text-align:right;', '2 h') as HTMLSpanElement;
+    this._timeRange.oninput = () => { this._timeLabel.textContent = `${this._timeRange.value} h`; };
+    timeRow.appendChild(this._timeRange);
+    timeRow.appendChild(this._timeLabel);
+    p.appendChild(timeRow);
 
     p.appendChild(this._label('Extra packages (requirements.txt)'));
     this._reqText = el(
@@ -322,6 +343,7 @@ class PuhtiWidget extends Widget {
     fd.append('partition', this._partitionSelect.value);
     fd.append('cpus', this._cpuRange.value);
     fd.append('memory_gb', this._memRange.value);
+    fd.append('time_hours', this._timeRange.value);
     fd.append('container', this._containerSelect.value);
     fd.append('username', this._username);
     const emailVal = this._emailInput.value.trim();
@@ -659,6 +681,125 @@ class PuhtiWidget extends Widget {
         this._myRequestsList.appendChild(row);
       });
     } catch { /* silently ignore */ }
+  }
+
+  // ── Data tab ────────────────────────────────────────────────────────────────
+
+  private _buildData(p: HTMLDivElement): void {
+    p.appendChild(el(
+      'div',
+      'font-size:11px;color:var(--jp-ui-font-color2);line-height:1.5;',
+      'Upload files to your persistent data directory on Puhti. Access them in your code via os.environ["USERDATA_PATH"].'
+    ));
+
+    // hidden file input (multiple)
+    this._dataFileInput = el('input', 'display:none;') as HTMLInputElement;
+    this._dataFileInput.type = 'file';
+    this._dataFileInput.multiple = true;
+    p.appendChild(this._dataFileInput);
+
+    const chooseBtn = btn('📁 Choose files', '#64748b', () => this._dataFileInput.click());
+    this._dataFileLabel = el('span', 'font-size:11px;color:var(--jp-ui-font-color2);margin-left:8px;', 'No files chosen') as HTMLSpanElement;
+    this._dataFileInput.onchange = () => {
+      const files = Array.from(this._dataFileInput.files || []);
+      this._dataFileLabel.textContent = files.length ? files.map(f => f.name).join(', ') : 'No files chosen';
+    };
+
+    const chooseRow = el('div', 'display:flex;align-items:center;flex-wrap:wrap;gap:4px;');
+    chooseRow.appendChild(chooseBtn);
+    chooseRow.appendChild(this._dataFileLabel);
+    p.appendChild(chooseRow);
+
+    this._dataUploadStatus = el('div', 'font-size:12px;min-height:18px;') as HTMLDivElement;
+    const uploadBtn = btn('⬆ Upload to Puhti', '#6366f1', () => this._uploadData(uploadBtn));
+    p.appendChild(uploadBtn);
+    p.appendChild(this._dataUploadStatus);
+
+    p.appendChild(el('hr', 'border:none;border-top:1px solid var(--jp-border-color2);margin:4px 0;'));
+
+    const listRow = el('div', 'display:flex;align-items:center;gap:8px;flex-shrink:0;');
+    listRow.appendChild(this._label('Files on Puhti'));
+    listRow.appendChild(btn('↻', '#64748b', () => this._loadDataFiles()));
+    p.appendChild(listRow);
+
+    this._dataFileList = el('div', 'display:flex;flex-direction:column;gap:4px;') as HTMLDivElement;
+    p.appendChild(this._dataFileList);
+  }
+
+  private async _uploadData(uploadBtn: HTMLButtonElement): Promise<void> {
+    const files = Array.from(this._dataFileInput.files || []);
+    if (!files.length) {
+      this._setStatus(this._dataUploadStatus, 'Choose files first', 'red');
+      return;
+    }
+    if (!this._username) {
+      this._setStatus(this._dataUploadStatus, 'Not logged in', 'red');
+      return;
+    }
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading…';
+    uploadBtn.style.opacity = '0.6';
+    this._setStatus(this._dataUploadStatus, `Uploading ${files.length} file(s)…`, '#f59e0b');
+    const fd = new FormData();
+    fd.append('username', this._username);
+    files.forEach(f => fd.append('files', f, f.name));
+    try {
+      const result = await this._api('POST', '/upload-data', fd);
+      this._setStatus(this._dataUploadStatus, `✓ Uploaded: ${(result.uploaded as string[]).join(', ')}`, '#10b981');
+      this._dataFileInput.value = '';
+      this._dataFileLabel.textContent = 'No files chosen';
+      this._loadDataFiles();
+    } catch (e) {
+      this._setStatus(this._dataUploadStatus, `Upload failed: ${e}`, 'red');
+    } finally {
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = '⬆ Upload to Puhti';
+      uploadBtn.style.opacity = '1';
+    }
+  }
+
+  private async _loadDataFiles(): Promise<void> {
+    if (!this._username || !this._dataFileList) { return; }
+    this._dataFileList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">Loading…</div>';
+    try {
+      const data = await this._api('GET', `/list-data?username=${encodeURIComponent(this._username)}`);
+      const files = data.files as { name: string; size_bytes: number }[];
+      this._dataFileList.innerHTML = '';
+      if (!files.length) {
+        this._dataFileList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">No files uploaded yet.</div>';
+        return;
+      }
+      files.forEach(f => {
+        const row = el('div',
+          'display:flex;align-items:center;gap:6px;font-size:11px;' +
+          'padding:4px 8px;background:var(--jp-layout-color2);border-radius:4px;'
+        );
+        const size = f.size_bytes > 1e6
+          ? `${(f.size_bytes / 1e6).toFixed(1)} MB`
+          : f.size_bytes > 1e3
+            ? `${(f.size_bytes / 1e3).toFixed(0)} KB`
+            : `${f.size_bytes} B`;
+        row.appendChild(el('span', 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', `📄 ${f.name}`));
+        row.appendChild(el('span', 'color:var(--jp-ui-font-color2);flex-shrink:0;', size));
+        const delBtn = btn('✕', '#ef4444', () => this._deleteDataFile(f.name, row));
+        delBtn.style.cssText += 'padding:2px 7px;font-size:11px;flex-shrink:0;';
+        row.appendChild(delBtn);
+        this._dataFileList.appendChild(row);
+      });
+    } catch (e) {
+      this._dataFileList.innerHTML = `<div style="color:red;font-size:11px;">Error: ${e}</div>`;
+    }
+  }
+
+  private async _deleteDataFile(filename: string, row: HTMLDivElement): Promise<void> {
+    if (!confirm(`Delete "${filename}" from Puhti?`)) { return; }
+    try {
+      await this._api('DELETE', `/delete-data/${encodeURIComponent(filename)}?username=${encodeURIComponent(this._username)}`);
+      row.remove();
+    } catch (e) {
+      const msg = el('div', 'font-size:11px;color:#ef4444;', `✗ ${e}`);
+      row.appendChild(msg);
+    }
   }
 
   // ── Utilities ───────────────────────────────────────────────────────────────
