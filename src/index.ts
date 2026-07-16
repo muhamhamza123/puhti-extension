@@ -766,6 +766,31 @@ class PuhtiWidget extends Widget {
     }
   }
 
+  private _makePathPanel(fullPath: string): HTMLDivElement {
+    const panel = el('div',
+      'display:none;padding:4px 8px 4px 12px;background:var(--jp-layout-color0);' +
+      'border-radius:0 0 4px 4px;border:1px solid var(--jp-border-color2);border-top:none;'
+    ) as HTMLDivElement;
+    const code = el('code', 'font-size:10px;word-break:break-all;color:var(--jp-mirror-editor-string-color,#10b981);', fullPath);
+    const copyBtn = btn('⧉ Copy', '#64748b', () => {
+      navigator.clipboard.writeText(fullPath);
+      copyBtn.textContent = '✓ Copied';
+      setTimeout(() => { copyBtn.textContent = '⧉ Copy'; }, 1500);
+    });
+    copyBtn.style.cssText += 'padding:2px 6px;font-size:10px;margin-left:6px;flex-shrink:0;';
+    const row = el('div', 'display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;');
+    row.appendChild(code);
+    row.appendChild(copyBtn);
+    panel.appendChild(row);
+    return panel;
+  }
+
+  private _fmtSize(bytes: number): string {
+    return bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)} MB`
+      : bytes > 1e3 ? `${(bytes / 1e3).toFixed(0)} KB`
+      : `${bytes} B`;
+  }
+
   private async _loadDataFiles(): Promise<void> {
     if (!this._username || !this._dataFileList) { return; }
     this._dataFileList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">Loading…</div>';
@@ -777,54 +802,90 @@ class PuhtiWidget extends Widget {
         this._dataFileList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">No files uploaded yet.</div>';
         return;
       }
-      files.forEach(f => {
-        const wrap = el('div', 'display:flex;flex-direction:column;gap:2px;') as HTMLDivElement;
 
-        const row = el('div',
-          'display:flex;align-items:center;gap:6px;font-size:11px;' +
-          'padding:4px 8px;background:var(--jp-layout-color2);border-radius:4px;'
-        );
-        const size = f.size_bytes > 1e6
-          ? `${(f.size_bytes / 1e6).toFixed(1)} MB`
-          : f.size_bytes > 1e3
-            ? `${(f.size_bytes / 1e3).toFixed(0)} KB`
-            : `${f.size_bytes} B`;
+      // Group by top-level folder; root files go under ''
+      const groups = new Map<string, typeof files>();
+      for (const f of files) {
+        const slash = f.name.indexOf('/');
+        const folder = slash === -1 ? '' : f.name.slice(0, slash);
+        if (!groups.has(folder)) { groups.set(folder, []); }
+        groups.get(folder)!.push(f);
+      }
 
-        const icon = f.name.includes('/') ? '📁' : '📄';
-        row.appendChild(el('span', 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', `${icon} ${f.name}`));
-        row.appendChild(el('span', 'color:var(--jp-ui-font-color2);flex-shrink:0;', size));
-
-        // Eye button — toggle path panel
-        const pathPanel = el('div',
-          'display:none;padding:4px 8px 4px 24px;background:var(--jp-layout-color0);' +
-          'border-radius:0 0 4px 4px;border:1px solid var(--jp-border-color2);border-top:none;'
-        ) as HTMLDivElement;
-        const pathCode = el('code', 'font-size:10px;word-break:break-all;color:var(--jp-mirror-editor-string-color,#10b981);', f.full_path);
-        const copyBtn = btn('⧉ Copy', '#64748b', () => {
-          navigator.clipboard.writeText(f.full_path);
-          copyBtn.textContent = '✓ Copied';
-          setTimeout(() => { copyBtn.textContent = '⧉ Copy'; }, 1500);
-        });
-        copyBtn.style.cssText += 'padding:2px 6px;font-size:10px;margin-left:8px;flex-shrink:0;';
-        const pathRow = el('div', 'display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;');
-        pathRow.appendChild(pathCode);
-        pathRow.appendChild(copyBtn);
-        pathPanel.appendChild(pathRow);
-
-        const eyeBtn = btn('👁', '#64748b', () => {
-          const open = pathPanel.style.display !== 'none';
-          pathPanel.style.display = open ? 'none' : 'block';
-        });
+      // Root-level files first
+      const rootFiles = groups.get('') || [];
+      rootFiles.forEach(f => {
+        const wrap = el('div', 'display:flex;flex-direction:column;') as HTMLDivElement;
+        const row = el('div', 'display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 8px;background:var(--jp-layout-color2);border-radius:4px;');
+        row.appendChild(el('span', 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', `📄 ${f.name}`));
+        row.appendChild(el('span', 'color:var(--jp-ui-font-color2);flex-shrink:0;', this._fmtSize(f.size_bytes)));
+        const pathPanel = this._makePathPanel(f.full_path);
+        const eyeBtn = btn('👁', '#64748b', () => { pathPanel.style.display = pathPanel.style.display === 'none' ? 'block' : 'none'; });
         eyeBtn.style.cssText += 'padding:2px 6px;font-size:11px;flex-shrink:0;';
-        row.appendChild(eyeBtn);
-
         const delBtn = btn('✕', '#ef4444', () => this._deleteDataFile(f.name, wrap));
         delBtn.style.cssText += 'padding:2px 7px;font-size:11px;flex-shrink:0;';
+        row.appendChild(eyeBtn);
         row.appendChild(delBtn);
-
         wrap.appendChild(row);
         wrap.appendChild(pathPanel);
         this._dataFileList.appendChild(wrap);
+      });
+
+      // Folders
+      groups.forEach((folderFiles, folder) => {
+        if (!folder) { return; }
+        const folderPath = data.userdata_path + '/' + folder;
+        const folderWrap = el('div', 'display:flex;flex-direction:column;gap:2px;') as HTMLDivElement;
+
+        // Folder header row
+        const folderRow = el('div',
+          'display:flex;align-items:center;gap:6px;font-size:11px;padding:5px 8px;' +
+          'background:var(--jp-layout-color3,var(--jp-layout-color2));border-radius:6px;cursor:pointer;user-select:none;'
+        );
+        const arrow = el('span', 'font-size:10px;transition:transform 0.15s;', '▶');
+        folderRow.appendChild(arrow);
+        folderRow.appendChild(el('span', 'flex:1;font-weight:600;', `📂 ${folder}`));
+        folderRow.appendChild(el('span', 'color:var(--jp-ui-font-color2);font-size:10px;', `${folderFiles.length} files`));
+
+        // Copy folder path button
+        const folderCopyBtn = btn('⧉ Path', '#64748b', (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(folderPath);
+          folderCopyBtn.textContent = '✓ Copied';
+          setTimeout(() => { folderCopyBtn.textContent = '⧉ Path'; }, 1500);
+        });
+        folderCopyBtn.style.cssText += 'padding:2px 6px;font-size:10px;flex-shrink:0;';
+        folderRow.appendChild(folderCopyBtn);
+
+        // Children container (collapsed by default)
+        const children = el('div', 'display:none;flex-direction:column;gap:2px;padding-left:12px;') as HTMLDivElement;
+        folderRow.onclick = () => {
+          const open = children.style.display !== 'none';
+          children.style.display = open ? 'none' : 'flex';
+          (arrow as HTMLElement).style.transform = open ? '' : 'rotate(90deg)';
+        };
+
+        folderFiles.forEach(f => {
+          const fname = f.name.slice(folder.length + 1);
+          const wrap = el('div', 'display:flex;flex-direction:column;') as HTMLDivElement;
+          const row = el('div', 'display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 8px;background:var(--jp-layout-color2);border-radius:4px;');
+          row.appendChild(el('span', 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', `📄 ${fname}`));
+          row.appendChild(el('span', 'color:var(--jp-ui-font-color2);flex-shrink:0;', this._fmtSize(f.size_bytes)));
+          const pathPanel = this._makePathPanel(f.full_path);
+          const eyeBtn = btn('👁', '#64748b', () => { pathPanel.style.display = pathPanel.style.display === 'none' ? 'block' : 'none'; });
+          eyeBtn.style.cssText += 'padding:2px 6px;font-size:11px;flex-shrink:0;';
+          const delBtn = btn('✕', '#ef4444', () => this._deleteDataFile(f.name, wrap));
+          delBtn.style.cssText += 'padding:2px 7px;font-size:11px;flex-shrink:0;';
+          row.appendChild(eyeBtn);
+          row.appendChild(delBtn);
+          wrap.appendChild(row);
+          wrap.appendChild(pathPanel);
+          children.appendChild(wrap);
+        });
+
+        folderWrap.appendChild(folderRow);
+        folderWrap.appendChild(children);
+        this._dataFileList.appendChild(folderWrap);
       });
     } catch (e) {
       this._dataFileList.innerHTML = `<div style="color:red;font-size:11px;">Error: ${e}</div>`;
