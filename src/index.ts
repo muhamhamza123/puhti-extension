@@ -848,14 +848,19 @@ class PuhtiWidget extends Widget {
         folderRow.appendChild(el('span', 'color:var(--jp-ui-font-color2);font-size:10px;', `${folderFiles.length} files`));
 
         // Copy folder path button
-        const folderCopyBtn = btn('⧉ Path', '#64748b', (e) => {
-          e.stopPropagation();
+        const folderCopyBtn = btn('⧉ Path', '#64748b', () => {
           navigator.clipboard.writeText(folderPath);
           folderCopyBtn.textContent = '✓ Copied';
           setTimeout(() => { folderCopyBtn.textContent = '⧉ Path'; }, 1500);
         });
         folderCopyBtn.style.cssText += 'padding:2px 6px;font-size:10px;flex-shrink:0;';
         folderRow.appendChild(folderCopyBtn);
+
+        const folderDelBtn = btn('✕', '#ef4444', () => {
+          this._deleteDataFile(folder, folderWrap);
+        });
+        folderDelBtn.style.cssText += 'padding:2px 7px;font-size:10px;flex-shrink:0;';
+        folderRow.appendChild(folderDelBtn);
 
         // Children container (collapsed by default)
         const children = el('div', 'display:none;flex-direction:column;gap:2px;padding-left:12px;') as HTMLDivElement;
@@ -893,7 +898,11 @@ class PuhtiWidget extends Widget {
   }
 
   private async _deleteDataFile(filename: string, wrap: HTMLDivElement): Promise<void> {
-    if (!confirm(`Delete "${filename}" from Puhti?`)) { return; }
+    const isFolder = !filename.includes('.');
+    const msg = isFolder
+      ? `Delete folder "${filename}" and all its contents from Puhti?`
+      : `Delete "${filename}" from Puhti?`;
+    if (!confirm(msg)) { return; }
     try {
       await this._api('DELETE', `/delete-data/${encodeURIComponent(filename)}?username=${encodeURIComponent(this._username)}`);
       wrap.remove();
