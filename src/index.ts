@@ -686,11 +686,15 @@ class PuhtiWidget extends Widget {
   // ── Data tab ────────────────────────────────────────────────────────────────
 
   private _buildData(p: HTMLDivElement): void {
-    p.appendChild(el(
+    const pathBanner = el(
       'div',
-      'font-size:11px;color:var(--jp-ui-font-color2);line-height:1.5;',
-      'Upload files to your persistent data directory on Puhti. Access them in your code via os.environ["USERDATA_PATH"].'
-    ));
+      'font-size:11px;background:var(--jp-layout-color2);border-radius:5px;padding:7px 10px;line-height:1.6;'
+    );
+    pathBanner.innerHTML =
+      '<span style="font-weight:600;color:var(--jp-ui-font-color1);">Your data path on Puhti:</span><br>' +
+      '<code style="font-size:10px;color:var(--jp-mirror-editor-string-color,#10b981);">os.environ[\'USERDATA_PATH\']</code>' +
+      '<span style="color:var(--jp-ui-font-color2);font-size:10px;"> — available in every job automatically</span>';
+    p.appendChild(pathBanner);
 
     // hidden file input (multiple)
     this._dataFileInput = el('input', 'display:none;') as HTMLInputElement;
@@ -698,6 +702,7 @@ class PuhtiWidget extends Widget {
     this._dataFileInput.multiple = true;
     p.appendChild(this._dataFileInput);
 
+    p.appendChild(el('div', 'font-size:10px;color:var(--jp-ui-font-color2);', 'Tip: upload a .zip to automatically extract it on Puhti.'));
     const chooseBtn = btn('📁 Choose files', '#64748b', () => this._dataFileInput.click());
     this._dataFileLabel = el('span', 'font-size:11px;color:var(--jp-ui-font-color2);margin-left:8px;', 'No files chosen') as HTMLSpanElement;
     this._dataFileInput.onchange = () => {
@@ -745,7 +750,10 @@ class PuhtiWidget extends Widget {
     files.forEach(f => fd.append('files', f, f.name));
     try {
       const result = await this._api('POST', '/upload-data', fd);
-      this._setStatus(this._dataUploadStatus, `✓ Uploaded: ${(result.uploaded as string[]).join(', ')}`, '#10b981');
+      const extracted = (result.extracted as string[] || []);
+      const msg = `✓ Uploaded: ${(result.uploaded as string[]).join(', ')}` +
+        (extracted.length ? ` — extracted: ${extracted.join(', ')}` : '');
+      this._setStatus(this._dataUploadStatus, msg, '#10b981');
       this._dataFileInput.value = '';
       this._dataFileLabel.textContent = 'No files chosen';
       this._loadDataFiles();
@@ -763,13 +771,15 @@ class PuhtiWidget extends Widget {
     this._dataFileList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">Loading…</div>';
     try {
       const data = await this._api('GET', `/list-data?username=${encodeURIComponent(this._username)}`);
-      const files = data.files as { name: string; size_bytes: number }[];
+      const files = data.files as { name: string; full_path: string; size_bytes: number }[];
       this._dataFileList.innerHTML = '';
       if (!files.length) {
         this._dataFileList.innerHTML = '<div style="font-size:11px;color:var(--jp-ui-font-color2);">No files uploaded yet.</div>';
         return;
       }
       files.forEach(f => {
+        const wrap = el('div', 'display:flex;flex-direction:column;gap:2px;') as HTMLDivElement;
+
         const row = el('div',
           'display:flex;align-items:center;gap:6px;font-size:11px;' +
           'padding:4px 8px;background:var(--jp-layout-color2);border-radius:4px;'
@@ -779,26 +789,56 @@ class PuhtiWidget extends Widget {
           : f.size_bytes > 1e3
             ? `${(f.size_bytes / 1e3).toFixed(0)} KB`
             : `${f.size_bytes} B`;
-        row.appendChild(el('span', 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', `📄 ${f.name}`));
+
+        const icon = f.name.includes('/') ? '📁' : '📄';
+        row.appendChild(el('span', 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', `${icon} ${f.name}`));
         row.appendChild(el('span', 'color:var(--jp-ui-font-color2);flex-shrink:0;', size));
-        const delBtn = btn('✕', '#ef4444', () => this._deleteDataFile(f.name, row));
+
+        // Eye button — toggle path panel
+        const pathPanel = el('div',
+          'display:none;padding:4px 8px 4px 24px;background:var(--jp-layout-color0);' +
+          'border-radius:0 0 4px 4px;border:1px solid var(--jp-border-color2);border-top:none;'
+        ) as HTMLDivElement;
+        const pathCode = el('code', 'font-size:10px;word-break:break-all;color:var(--jp-mirror-editor-string-color,#10b981);', f.full_path);
+        const copyBtn = btn('⧉ Copy', '#64748b', () => {
+          navigator.clipboard.writeText(f.full_path);
+          copyBtn.textContent = '✓ Copied';
+          setTimeout(() => { copyBtn.textContent = '⧉ Copy'; }, 1500);
+        });
+        copyBtn.style.cssText += 'padding:2px 6px;font-size:10px;margin-left:8px;flex-shrink:0;';
+        const pathRow = el('div', 'display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;');
+        pathRow.appendChild(pathCode);
+        pathRow.appendChild(copyBtn);
+        pathPanel.appendChild(pathRow);
+
+        const eyeBtn = btn('👁', '#64748b', () => {
+          const open = pathPanel.style.display !== 'none';
+          pathPanel.style.display = open ? 'none' : 'block';
+        });
+        eyeBtn.style.cssText += 'padding:2px 6px;font-size:11px;flex-shrink:0;';
+        row.appendChild(eyeBtn);
+
+        const delBtn = btn('✕', '#ef4444', () => this._deleteDataFile(f.name, wrap));
         delBtn.style.cssText += 'padding:2px 7px;font-size:11px;flex-shrink:0;';
         row.appendChild(delBtn);
-        this._dataFileList.appendChild(row);
+
+        wrap.appendChild(row);
+        wrap.appendChild(pathPanel);
+        this._dataFileList.appendChild(wrap);
       });
     } catch (e) {
       this._dataFileList.innerHTML = `<div style="color:red;font-size:11px;">Error: ${e}</div>`;
     }
   }
 
-  private async _deleteDataFile(filename: string, row: HTMLDivElement): Promise<void> {
+  private async _deleteDataFile(filename: string, wrap: HTMLDivElement): Promise<void> {
     if (!confirm(`Delete "${filename}" from Puhti?`)) { return; }
     try {
       await this._api('DELETE', `/delete-data/${encodeURIComponent(filename)}?username=${encodeURIComponent(this._username)}`);
-      row.remove();
+      wrap.remove();
     } catch (e) {
       const msg = el('div', 'font-size:11px;color:#ef4444;', `✗ ${e}`);
-      row.appendChild(msg);
+      wrap.appendChild(msg);
     }
   }
 
